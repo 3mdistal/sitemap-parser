@@ -10,9 +10,12 @@
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^4.14.5",
     "@astrojs/check": "^0.9.3",
-    "typescript": "^5.5.4"
+    "astro": "^4.14.5",
+    "axios": "^1.7.5",
+    "cheerio": "^1.0.0",
+    "typescript": "^5.5.4",
+    "xml2js": "^0.6.2"
   },
   "packageManager": "pnpm@8.7.4+sha512.fdb4396d7a7c97b92b866d905d0546b8f8f3342fd9fe9d1f2b8930f1a22ba86d18b614d2f5a9112861e25b26875fadb7967b42ae21c16593ea85b5dccea48d56"
 }
