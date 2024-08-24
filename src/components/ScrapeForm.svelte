@@ -5,6 +5,7 @@ let results: string[] = [];
 let isLoading = false;
 let error: string | null = null;
 let eventSource: EventSource | null = null;
+let isComplete = false;
 
 onMount(() => {
   return () => {
@@ -23,6 +24,7 @@ const handleSubmit = async (event: Event) => {
   isLoading = true;
   error = null;
   results = [];
+  isComplete = false;
 
   if (eventSource) {
     eventSource.close();
@@ -36,6 +38,8 @@ const handleSubmit = async (event: Event) => {
       results = [...results, data.url];
     } else if (data.type === 'complete') {
       isLoading = false;
+      results = results.sort((a, b) => a.localeCompare(b)); // Sort alphabetically
+      isComplete = true;
       eventSource?.close();
     } else if (data.type === 'error') {
       error = data.message;
@@ -68,7 +72,13 @@ const handleSubmit = async (event: Event) => {
     {/if}
 
     {#if results.length > 0}
-        <h2>Scraped URLs:</h2>
+        <h2>
+            {#if isComplete}
+                Scraped URLs (Alphabetical Order):
+            {:else}
+                Scraped URLs:
+            {/if}
+        </h2>
         <ul>
             {#each results as url}
                 <li>{url}</li>
