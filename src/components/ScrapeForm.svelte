@@ -7,8 +7,7 @@ let error: string | null = null;
 let eventSource: EventSource | null = null;
 let isComplete = false;
 let sitemapOnly = false;
-let progress = 0;
-let totalUrls = 0;
+let urlCount = 0;
 
 onMount(() => {
   return () => {
@@ -28,8 +27,7 @@ const handleSubmit = async (event: Event) => {
   error = null;
   results = [];
   isComplete = false;
-  progress = 0;
-  totalUrls = 0;
+  urlCount = 0;
 
   if (eventSource) {
     eventSource.close();
@@ -41,8 +39,7 @@ const handleSubmit = async (event: Event) => {
     const data = JSON.parse(event.data);
     if (data.type === 'url') {
       results = [...results, data.url];
-      totalUrls = data.totalUrls;
-      progress = Math.round((results.length / totalUrls) * 100);
+      urlCount++;
     } else if (data.type === 'complete') {
       isLoading = false;
       results = results.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())); // Sort alphabetically, case-insensitive
@@ -88,8 +85,7 @@ const downloadSitemap = (format: 'xml' | 'json' | 'txt') => {
 
 <div id="result">
     {#if isLoading}
-        <p>Sitemap generation in progress... {progress}% complete</p>
-        <progress value={progress} max="100"></progress>
+        <p>Sitemap generation in progress... {urlCount} URLs found so far</p>
     {:else if error}
         <p>Error: {error}</p>
     {/if}
