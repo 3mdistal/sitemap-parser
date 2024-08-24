@@ -7,6 +7,8 @@ let error: string | null = null;
 let eventSource: EventSource | null = null;
 let isComplete = false;
 let sitemapOnly = false;
+let progress = 0;
+let totalUrls = 0;
 
 onMount(() => {
   return () => {
@@ -26,6 +28,8 @@ const handleSubmit = async (event: Event) => {
   error = null;
   results = [];
   isComplete = false;
+  progress = 0;
+  totalUrls = 0;
 
   if (eventSource) {
     eventSource.close();
@@ -37,12 +41,14 @@ const handleSubmit = async (event: Event) => {
     const data = JSON.parse(event.data);
     if (data.type === 'url') {
       results = [...results, data.url];
+      totalUrls = data.totalUrls;
+      progress = Math.round((results.length / totalUrls) * 100);
     } else if (data.type === 'complete') {
       isLoading = false;
-      results = results.sort((a, b) => a.localeCompare(b)); // Sort alphabetically
+      results = results.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())); // Sort alphabetically, case-insensitive
       isComplete = true;
       eventSource?.close();
-      alert('Scraping complete. sitemap.xml and scraped_urls.txt have been generated.');
+      alert('Scraping complete. sitemap.xml, sitemap.json, and scraped_urls.txt have been generated.');
     } else if (data.type === 'error') {
       error = data.message;
       isLoading = false;
@@ -55,6 +61,16 @@ const handleSubmit = async (event: Event) => {
     isLoading = false;
     eventSource?.close();
   };
+};
+
+const downloadSitemap = (format: 'xml' | 'json' | 'txt') => {
+  const filename = `sitemap.${format}`;
+  const link = document.createElement('a');
+  link.href = `/api/download?format=${format}`;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 };
 </script>
 
@@ -72,9 +88,17 @@ const handleSubmit = async (event: Event) => {
 
 <div id="result">
     {#if isLoading}
-        <p>Sitemap generation in progress...</p>
+        <p>Sitemap generation in progress... {progress}% complete</p>
+        <progress value={progress} max="100"></progress>
     {:else if error}
         <p>Error: {error}</p>
+    {/if}
+
+    {#if isComplete}
+        <h2>Download Sitemap:</h2>
+        <button on:click={() => downloadSitemap('xml')}>Download XML</button>
+        <button on:click={() => downloadSitemap('json')}>Download JSON</button>
+        <button on:click={() => downloadSitemap('txt')}>Download TXT</button>
     {/if}
 
     {#if results.length > 0}

@@ -41,9 +41,12 @@ export async function scrapeWebsite(
     await scrapeUrls(inputUrl, urls, baseUrl, addUrl);
   }
 
-  const sortedUrls = Array.from(urls).sort();
+  const sortedUrls = Array.from(urls).sort((a, b) =>
+    a.toLowerCase().localeCompare(b.toLowerCase())
+  );
   await writeUrlsToFile(sortedUrls);
   await generateSitemapXml(sortedUrls);
+  await generateSitemapJson(sortedUrls);
   return sortedUrls;
 }
 
@@ -76,6 +79,10 @@ async function scrapeUrls(
   try {
     const response = await axios.get(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
+      maxRedirects: 5,
+      validateStatus: function (status) {
+        return status >= 200 && status < 300;
+      },
     });
     const root = parse(response.data);
     const links = root.querySelectorAll("a");
@@ -124,4 +131,9 @@ ${urls
 </urlset>`;
 
   await fs.writeFile("sitemap.xml", xmlContent);
+}
+
+async function generateSitemapJson(urls: string[]) {
+  const jsonContent = JSON.stringify({ urls }, null, 2);
+  await fs.writeFile("sitemap.json", jsonContent);
 }
