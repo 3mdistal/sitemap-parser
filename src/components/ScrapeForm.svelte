@@ -1,34 +1,58 @@
 <script lang="ts">
-import { actions } from "astro:actions";
+import { onMount } from 'svelte';
 
 let results: string[] = [];
 let isLoading = false;
 let error: string | null = null;
+let eventSource: EventSource | null = null;
 
-const handleSubmit = async (event: SubmitEvent) => {
-    event.preventDefault();
-    const formData = new FormData(event.target as HTMLFormElement);
-    isLoading = true;
-    error = null;
-    results = [];
-
-    try {
-        const result = await actions.scrape(formData);
-        if (!result.data?.success) {
-            throw new Error(result.data?.error);
-        }
-
-        results = result.data.urls || [];
-    } catch (err) {
-        error = err instanceof Error ? err.message : 'An unknown error occurred';
-    } finally {
-        isLoading = false;
+onMount(() => {
+  return () => {
+    if (eventSource) {
+      eventSource.close();
     }
-};
+  };
+});
 
+const handleSubmit = async (event: Event) => {
+  event.preventDefault();
+  const form = event.target as HTMLFormElement;
+  const formData = new FormData(form);
+  const url = formData.get('url') as string;
+
+  isLoading = true;
+  error = null;
+  results = [];
+
+  if (eventSource) {
+    eventSource.close();
+  }
+
+  eventSource = new EventSource(`/api/scrape?url=${encodeURIComponent(url)}`);
+
+  eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === 'url') {
+      results = [...results, data.url];
+    } else if (data.type === 'complete') {
+      isLoading = false;
+      eventSource?.close();
+    } else if (data.type === 'error') {
+      error = data.message;
+      isLoading = false;
+      eventSource?.close();
+    }
+  };
+
+  eventSource.onerror = () => {
+    error = 'Connection error';
+    isLoading = false;
+    eventSource?.close();
+  };
+};
 </script>
 
-<form method="POST" on:submit={handleSubmit}>
+<form on:submit={handleSubmit}>
     <label for="url">Website URL:</label>
     <input type="url" id="url" name="url" required>
     <button type="submit" disabled={isLoading}>
@@ -41,7 +65,9 @@ const handleSubmit = async (event: SubmitEvent) => {
         <p>Scraping in progress...</p>
     {:else if error}
         <p>Error: {error}</p>
-    {:else if results.length > 0}
+    {/if}
+
+    {#if results.length > 0}
         <h2>Scraped URLs:</h2>
         <ul>
             {#each results as url}
