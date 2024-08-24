@@ -41,6 +41,7 @@ const handleSubmit = async (event: Event) => {
       results = results.sort((a, b) => a.localeCompare(b)); // Sort alphabetically
       isComplete = true;
       eventSource?.close();
+      alert('Scraping complete. sitemap.xml and scraped_urls.txt have been generated.');
     } else if (data.type === 'error') {
       error = data.message;
       isLoading = false;
@@ -60,13 +61,13 @@ const handleSubmit = async (event: Event) => {
     <label for="url">Website URL:</label>
     <input type="url" id="url" name="url" required>
     <button type="submit" disabled={isLoading}>
-        {isLoading ? 'Scraping...' : 'Scrape'}
+        {isLoading ? 'Generating Sitemap...' : 'Generate Sitemap'}
     </button>
 </form>
 
 <div id="result">
     {#if isLoading}
-        <p>Scraping in progress...</p>
+        <p>Sitemap generation in progress...</p>
     {:else if error}
         <p>Error: {error}</p>
     {/if}
@@ -74,9 +75,9 @@ const handleSubmit = async (event: Event) => {
     {#if results.length > 0}
         <h2>
             {#if isComplete}
-                Scraped URLs (Alphabetical Order):
+                Generated URLs (Alphabetical Order):
             {:else}
-                Scraped URLs:
+                Generated URLs:
             {/if}
         </h2>
         <ul>

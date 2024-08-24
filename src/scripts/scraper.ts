@@ -40,6 +40,7 @@ export async function scrapeWebsite(
 
   const sortedUrls = Array.from(urls).sort();
   await writeUrlsToFile(sortedUrls);
+  await generateSitemapXml(sortedUrls);
   return sortedUrls;
 }
 
@@ -105,4 +106,19 @@ async function scrapeUrls(
 async function writeUrlsToFile(urls: string[]) {
   const formattedUrls = urls.map((url) => `/fetch ${url}`);
   await fs.writeFile("scraped_urls.txt", formattedUrls.join("\n"));
+}
+
+async function generateSitemapXml(urls: string[]) {
+  const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls
+  .map(
+    (url) => `  <url>
+    <loc>${url}</loc>
+  </url>`
+  )
+  .join("\n")}
+</urlset>`;
+
+  await fs.writeFile("sitemap.xml", xmlContent);
 }
