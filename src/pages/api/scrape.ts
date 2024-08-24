@@ -3,6 +3,8 @@ import type { APIContext } from "astro";
 
 export async function GET({ request }: APIContext) {
   const url = new URL(request.url).searchParams.get("url");
+  const sitemapOnly =
+    new URL(request.url).searchParams.get("sitemapOnly") === "true";
 
   if (!url) {
     return new Response("Missing URL parameter", { status: 400 });
@@ -18,9 +20,13 @@ export async function GET({ request }: APIContext) {
 
   const scrape = async () => {
     try {
-      await scrapeWebsite(url, async (foundUrl) => {
-        await sendEvent({ type: "url", url: foundUrl });
-      });
+      await scrapeWebsite(
+        url,
+        async (foundUrl) => {
+          await sendEvent({ type: "url", url: foundUrl });
+        },
+        sitemapOnly
+      );
 
       await sendEvent({ type: "complete" });
     } catch (error) {

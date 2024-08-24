@@ -6,6 +6,7 @@ let isLoading = false;
 let error: string | null = null;
 let eventSource: EventSource | null = null;
 let isComplete = false;
+let sitemapOnly = false;
 
 onMount(() => {
   return () => {
@@ -30,7 +31,7 @@ const handleSubmit = async (event: Event) => {
     eventSource.close();
   }
 
-  eventSource = new EventSource(`/api/scrape?url=${encodeURIComponent(url)}`);
+  eventSource = new EventSource(`/api/scrape?url=${encodeURIComponent(url)}&sitemapOnly=${sitemapOnly}`);
 
   eventSource.onmessage = (event) => {
     const data = JSON.parse(event.data);
@@ -60,6 +61,10 @@ const handleSubmit = async (event: Event) => {
 <form on:submit={handleSubmit}>
     <label for="url">Website URL:</label>
     <input type="url" id="url" name="url" required>
+    <label>
+        <input type="checkbox" bind:checked={sitemapOnly}>
+        Sitemap only
+    </label>
     <button type="submit" disabled={isLoading}>
         {isLoading ? 'Generating Sitemap...' : 'Generate Sitemap'}
     </button>
@@ -102,5 +107,13 @@ const handleSubmit = async (event: Event) => {
     }
     li {
         margin-bottom: 5px;
+    }
+    label {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    input[type="checkbox"] {
+        margin-right: 5px;
     }
 </style>

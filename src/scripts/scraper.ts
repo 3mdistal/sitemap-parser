@@ -5,7 +5,8 @@ import fs from "fs/promises";
 
 export async function scrapeWebsite(
   inputUrl: string,
-  onUrlFound?: (url: string) => void
+  onUrlFound?: (url: string) => void,
+  sitemapOnly: boolean = false
 ): Promise<string[]> {
   const baseUrl = new URL(inputUrl).origin;
   const urls: Set<string> = new Set();
@@ -35,8 +36,10 @@ export async function scrapeWebsite(
     console.error(`Error fetching sitemap: ${error}`);
   }
 
-  // Always scrape URLs, even if sitemap was found
-  await scrapeUrls(inputUrl, urls, baseUrl, addUrl);
+  // Only scrape URLs if sitemapOnly is false
+  if (!sitemapOnly) {
+    await scrapeUrls(inputUrl, urls, baseUrl, addUrl);
+  }
 
   const sortedUrls = Array.from(urls).sort();
   await writeUrlsToFile(sortedUrls);
