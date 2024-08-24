@@ -9,23 +9,18 @@ export const server = {
     }),
     handler: async ({ url }) => {
       try {
-        const scrapedUrls = await scrapeWebsite(url);
-        return {
-          success: true,
-          data: scrapedUrls,
-        };
+        const urls: string[] = [];
+        await scrapeWebsite(url, (foundUrl) => {
+          urls.push(foundUrl);
+        });
+        return { success: true, urls };
       } catch (error) {
+        let errorMessage =
+          "An unknown error occurred while scraping the website";
         if (error instanceof Error) {
-          return {
-            success: false,
-            error: `Error scraping website: ${error.message}`,
-          };
-        } else {
-          return {
-            success: false,
-            error: "An unknown error occurred while scraping the website",
-          };
+          errorMessage = `Error scraping website: ${error.message}`;
         }
+        return { success: false, error: errorMessage };
       }
     },
   }),
