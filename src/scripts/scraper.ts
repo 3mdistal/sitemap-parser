@@ -11,11 +11,25 @@ export async function scrapeWebsite(
   const baseUrl = new URL(inputUrl).origin;
   const urls: Set<string> = new Set();
 
-  const addUrl = (url: string) => {
+  const addUrl = async (url: string) => {
     if (!url.includes("#")) {
-      urls.add(url);
-      console.log(`Found URL: ${url}`);
-      onUrlFound?.(url);
+      try {
+        const response = await axios.head(url, {
+          headers: { "User-Agent": "Mozilla/5.0" },
+          validateStatus: function (status) {
+            return status >= 200 && status < 500;
+          },
+        });
+        if (response.status !== 404) {
+          urls.add(url);
+          console.log(`Found URL: ${url}`);
+          onUrlFound?.(url);
+        } else {
+          console.log(`Skipping 404 URL: ${url}`);
+        }
+      } catch (error) {
+        console.error(`Error checking URL ${url}: ${error}`);
+      }
     }
   };
 
@@ -28,9 +42,9 @@ export async function scrapeWebsite(
     if (sitemapResponse.status === 200) {
       const sitemapXml = sitemapResponse.data;
       const sitemapUrls = await parseSitemap(sitemapXml, inputUrl);
-      sitemapUrls.forEach((url) => {
-        addUrl(url);
-      });
+      for (const url of sitemapUrls) {
+        await addUrl(url);
+      }
     }
   } catch (error) {
     console.error(`Error fetching sitemap: ${error}`);
@@ -71,40 +85,43 @@ async function scrapeUrls(
   url: string,
   urls: Set<string>,
   baseUrl: string,
-  addUrl: (url: string) => void
+  addUrl: (url: string) => Promise<void>
 ) {
   if (urls.has(url)) return;
-  addUrl(url);
+  await addUrl(url);
 
   try {
     const response = await axios.get(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
       maxRedirects: 5,
       validateStatus: function (status) {
-        return status >= 200 && status < 300;
+        return status >= 200 && status < 500;
       },
     });
-    const root = parse(response.data);
-    const links = root.querySelectorAll("a");
 
-    for (const link of links) {
-      const href = link.getAttribute("href");
-      if (href && !href.includes("#")) {
-        let fullUrl: string;
-        if (href.startsWith("http")) {
-          fullUrl = href;
-        } else if (href.startsWith("/")) {
-          fullUrl = `${baseUrl}${href}`;
-        } else {
-          fullUrl = new URL(href, url).toString();
-        }
+    if (response.status >= 200 && response.status < 300) {
+      const root = parse(response.data);
+      const links = root.querySelectorAll("a");
 
-        if (
-          fullUrl.startsWith(baseUrl) &&
-          !urls.has(fullUrl) &&
-          !fullUrl.includes("#")
-        ) {
-          await scrapeUrls(fullUrl, urls, baseUrl, addUrl);
+      for (const link of links) {
+        const href = link.getAttribute("href");
+        if (href && !href.includes("#")) {
+          let fullUrl: string;
+          if (href.startsWith("http")) {
+            fullUrl = href;
+          } else if (href.startsWith("/")) {
+            fullUrl = `${baseUrl}${href}`;
+          } else {
+            fullUrl = new URL(href, url).toString();
+          }
+
+          if (
+            fullUrl.startsWith(baseUrl) &&
+            !urls.has(fullUrl) &&
+            !fullUrl.includes("#")
+          ) {
+            await scrapeUrls(fullUrl, urls, baseUrl, addUrl);
+          }
         }
       }
     }
