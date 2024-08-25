@@ -9,29 +9,28 @@ export async function scrapeWebsite(
   sitemapOnly: boolean = false
 ): Promise<string[]> {
   const baseUrl = new URL(inputUrl).origin;
-  const urls: Set<string> = new Set();
+  const discoveredUrls: Set<string> = new Set();
 
-  const addUrl = async (url: string) => {
-    if (!url.includes("#")) {
-      try {
-        const response = await axios.head(url, {
-          headers: { "User-Agent": "Mozilla/5.0" },
-          validateStatus: function (status) {
-            return status >= 200 && status < 500;
-          },
-        });
-        if (response.status !== 404) {
-          urls.add(url);
-          console.log(`Found URL: ${url}`);
-          onUrlFound?.(url);
-        } else {
-          console.log(`Skipping 404 URL: ${url}`);
-        }
-      } catch (error) {
-        console.error(`Error checking URL ${url}: ${error}`);
+  async function addUrlToSet(url: string) {
+    if (url.includes("#")) return; // Ignore URLs with fragments
+
+    try {
+      const response = await axios.head(url, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        validateStatus: (status) => status >= 200 && status < 500,
+      });
+
+      if (response.status !== 404) {
+        discoveredUrls.add(url);
+        console.log(`Found URL: ${url}`);
+        onUrlFound?.(url);
+      } else {
+        console.log(`Skipping 404 URL: ${url}`);
       }
+    } catch (error) {
+      console.error(`Error checking URL ${url}: ${error}`);
     }
-  };
+  }
 
   // Check for sitemap
   const sitemapUrl = `${baseUrl}/sitemap.xml`;
@@ -43,24 +42,26 @@ export async function scrapeWebsite(
       const sitemapXml = sitemapResponse.data;
       const sitemapUrls = await parseSitemap(sitemapXml, inputUrl);
       for (const url of sitemapUrls) {
-        await addUrl(url);
+        await addUrlToSet(url);
       }
     }
   } catch (error) {
     console.error(`Error fetching sitemap: ${error}`);
   }
 
-  // Only scrape URLs if sitemapOnly is false
+  // Scrape URLs if sitemapOnly is false
   if (!sitemapOnly) {
-    await scrapeUrls(inputUrl, urls, baseUrl, addUrl);
+    await scrapeUrlsRecursively(inputUrl, discoveredUrls, baseUrl, addUrlToSet);
   }
 
-  const sortedUrls = Array.from(urls).sort((a, b) =>
+  const sortedUrls = Array.from(discoveredUrls).sort((a, b) =>
     a.toLowerCase().localeCompare(b.toLowerCase())
   );
+
   await writeUrlsToFile(sortedUrls);
   await generateSitemapXml(sortedUrls);
   await generateSitemapJson(sortedUrls);
+
   return sortedUrls;
 }
 
@@ -81,22 +82,20 @@ async function parseSitemap(xml: string, baseUrl: string): Promise<string[]> {
   });
 }
 
-async function scrapeUrls(
+async function scrapeUrlsRecursively(
   url: string,
-  urls: Set<string>,
+  discoveredUrls: Set<string>,
   baseUrl: string,
-  addUrl: (url: string) => Promise<void>
+  addUrlToSet: (url: string) => Promise<void>
 ) {
-  if (urls.has(url)) return;
-  await addUrl(url);
+  if (discoveredUrls.has(url)) return;
+  await addUrlToSet(url);
 
   try {
     const response = await axios.get(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
       maxRedirects: 5,
-      validateStatus: function (status) {
-        return status >= 200 && status < 500;
-      },
+      validateStatus: (status) => status >= 200 && status < 500,
     });
 
     if (response.status >= 200 && response.status < 300) {
@@ -106,27 +105,39 @@ async function scrapeUrls(
       for (const link of links) {
         const href = link.getAttribute("href");
         if (href && !href.includes("#")) {
-          let fullUrl: string;
-          if (href.startsWith("http")) {
-            fullUrl = href;
-          } else if (href.startsWith("/")) {
-            fullUrl = `${baseUrl}${href}`;
-          } else {
-            fullUrl = new URL(href, url).toString();
-          }
+          const fullUrl = constructFullUrl(href, url, baseUrl);
 
           if (
             fullUrl.startsWith(baseUrl) &&
-            !urls.has(fullUrl) &&
+            !discoveredUrls.has(fullUrl) &&
             !fullUrl.includes("#")
           ) {
-            await scrapeUrls(fullUrl, urls, baseUrl, addUrl);
+            await scrapeUrlsRecursively(
+              fullUrl,
+              discoveredUrls,
+              baseUrl,
+              addUrlToSet
+            );
           }
         }
       }
     }
   } catch (error) {
     console.error(`Error scraping ${url}: ${error}`);
+  }
+}
+
+function constructFullUrl(
+  href: string,
+  currentUrl: string,
+  baseUrl: string
+): string {
+  if (href.startsWith("http")) {
+    return href;
+  } else if (href.startsWith("/")) {
+    return `${baseUrl}${href}`;
+  } else {
+    return new URL(href, currentUrl).toString();
   }
 }
 
