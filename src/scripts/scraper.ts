@@ -1,7 +1,13 @@
-import axios from "axios";
+import axios, { type AxiosInstance } from "axios";
 import { parse } from "node-html-parser";
 import { parseString } from "xml2js";
 import fs from "fs/promises";
+
+const axiosInstance: AxiosInstance = axios.create({
+  headers: { "User-Agent": "Mozilla/5.0" },
+  maxRedirects: 5,
+  validateStatus: (status) => [200, 301, 302, 304, 307, 308].includes(status),
+});
 
 export async function scrapeWebsite(
   inputUrl: string,
@@ -16,11 +22,7 @@ export async function scrapeWebsite(
     if (url.includes("?")) return; // Ignore URLs with query parameters
 
     try {
-      await axios.head(url, {
-        headers: { "User-Agent": "Mozilla/5.0" },
-        validateStatus: (status) =>
-          status === 200 || status === 301 || status === 302,
-      });
+      await axiosInstance.head(url);
 
       discoveredUrls.add(url);
       console.log(`Found URL: ${url}`);
@@ -33,9 +35,7 @@ export async function scrapeWebsite(
   // Check for sitemap
   const sitemapUrl = `${baseUrl}/sitemap.xml`;
   try {
-    const sitemapResponse = await axios.get(sitemapUrl, {
-      headers: { "User-Agent": "Mozilla/5.0" },
-    });
+    const sitemapResponse = await axiosInstance.get(sitemapUrl);
     if (sitemapResponse.status === 200) {
       const sitemapXml = sitemapResponse.data;
       const sitemapUrls = await parseSitemap(sitemapXml, inputUrl);
@@ -90,11 +90,7 @@ async function scrapeUrlsRecursively(
   await addUrlToSet(url);
 
   try {
-    const response = await axios.get(url, {
-      headers: { "User-Agent": "Mozilla/5.0" },
-      maxRedirects: 5,
-      validateStatus: (status) => status >= 200 && status < 500,
-    });
+    const response = await axiosInstance.get(url);
 
     if (response.status >= 200 && response.status < 300) {
       const root = parse(response.data);
