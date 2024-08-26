@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance } from "axios";
-import { parse } from "node-html-parser";
 import { parseString } from "xml2js";
 import fs from "fs/promises";
+import { Worker } from "worker_threads";
 
 const axiosInstance: AxiosInstance = axios.create({
   headers: { "User-Agent": "Mozilla/5.0" },
@@ -35,7 +35,7 @@ export async function scrapeWebsite(
   await checkSitemap(baseUrl, inputUrl, addUrlToSet);
 
   if (!sitemapOnly) {
-    await scrapeUrlsRecursively(inputUrl, discoveredUrls, baseUrl, addUrlToSet);
+    await scrapeUrlsParallel(inputUrl, discoveredUrls, baseUrl, addUrlToSet);
   }
 
   const sortedUrls = Array.from(discoveredUrls).sort((a, b) =>
@@ -80,55 +80,47 @@ async function parseSitemap(xml: string, baseUrl: string): Promise<string[]> {
   });
 }
 
-async function scrapeUrlsRecursively(
-  url: string,
+async function scrapeUrlsParallel(
+  startUrl: string,
   discoveredUrls: Set<string>,
   baseUrl: string,
   addUrlToSet: (url: string) => Promise<void>
 ) {
-  if (discoveredUrls.has(url)) return;
-  await addUrlToSet(url);
+  const workerCount = 4; // Adjust this number based on your needs
+  const workers: Worker[] = [];
+  const urlsToScrape: string[] = [startUrl];
+  const scrapedUrls: Set<string> = new Set();
 
-  try {
-    const response = await axiosInstance.get(url);
-    const root = parse(response.data);
-    const links = root.querySelectorAll("a");
+  for (let i = 0; i < workerCount; i++) {
+    const worker = new Worker(new URL("./scraper.worker.js", import.meta.url));
+    workers.push(worker);
 
-    for (const link of links) {
-      const href = link.getAttribute("href");
-      if (href && !href.includes("#")) {
-        const fullUrl = constructFullUrl(href, url, baseUrl);
-
-        if (
-          fullUrl.startsWith(baseUrl) &&
-          !discoveredUrls.has(fullUrl) &&
-          !fullUrl.includes("#")
-        ) {
-          await scrapeUrlsRecursively(
-            fullUrl,
-            discoveredUrls,
-            baseUrl,
-            addUrlToSet
-          );
+    worker.on("message", async (message) => {
+      if (message.type === "result") {
+        for (const url of message.urls) {
+          if (!scrapedUrls.has(url) && !discoveredUrls.has(url)) {
+            await addUrlToSet(url);
+            urlsToScrape.push(url);
+          }
         }
       }
-    }
-  } catch (error) {
-    console.error(`Error scraping ${url}: ${error}`);
+    });
   }
-}
 
-function constructFullUrl(
-  href: string,
-  currentUrl: string,
-  baseUrl: string
-): string {
-  if (href.startsWith("http")) {
-    return href;
-  } else if (href.startsWith("/")) {
-    return `${baseUrl}${href}`;
-  } else {
-    return new URL(href, currentUrl).toString();
+  while (urlsToScrape.length > 0 || workers.some((w) => w.threadId !== -1)) {
+    for (const worker of workers) {
+      if (worker.threadId !== -1 && urlsToScrape.length > 0) {
+        const url = urlsToScrape.pop()!;
+        scrapedUrls.add(url);
+        worker.postMessage({ url, baseUrl });
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  for (const worker of workers) {
+    worker.terminate();
   }
 }
 
