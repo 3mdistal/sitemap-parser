@@ -10,7 +10,7 @@ export async function scrapeUrlsParallel(
   discoveredUrls: Set<string>,
   baseUrl: string,
   addUrlToSet: (url: string) => Promise<void>
-) {
+): Promise<void> {
   const workerCount = 4;
   const workers: Worker[] = [];
   const urlsToScrape = new Queue<string>();
@@ -18,56 +18,73 @@ export async function scrapeUrlsParallel(
 
   logger.info(`Starting parallel scraping with ${workerCount} workers`);
 
+  let activeWorkers = 0;
+  let isTimedOut = false;
+
   const timeout = setTimeout(() => {
     logger.warn("Scraping timed out");
-    for (const worker of workers) {
-      worker.terminate();
-    }
+    isTimedOut = true;
   }, 5 * 60 * 1000);
 
-  for (let i = 0; i < workerCount; i++) {
-    const worker = new Worker(new URL("./scraper.worker.ts", import.meta.url));
-    workers.push(worker);
+  return new Promise((resolve) => {
+    for (let i = 0; i < workerCount; i++) {
+      const worker = new Worker(new URL("./scraper.worker.js", import.meta.url));
+      workers.push(worker);
 
-    worker.on("message", async (message) => {
-      if (message.type === "result") {
-        logger.verbose(`Worker ${worker.threadId} found ${message.urls.length} URLs`);
-        for (const url of message.urls) {
-          const normalizedUrl = normalizeUrl(url);
-          if (!discoveredUrls.has(normalizedUrl)) {
-            await addUrlToSet(url);
-            urlsToScrape.enqueue(url);
+      worker.on("message", async (message) => {
+        if (message.type === "result") {
+          logger.verbose(`Worker ${worker.threadId} found ${message.urls.length} URLs`);
+          for (const url of message.urls) {
+            const normalizedUrl = normalizeUrl(url);
+            if (normalizedUrl && !discoveredUrls.has(normalizedUrl)) {
+              await addUrlToSet(url);
+              urlsToScrape.enqueue(url);
+            }
           }
+        } else if (message.type === "error") {
+          logger.error(`Worker ${worker.threadId} error: ${message.error}`);
         }
-      } else if (message.type === "error") {
-        logger.error(`Worker ${worker.threadId} error: ${message.error}`);
-      }
-    });
-  }
 
-  while (urlsToScrape.length > 0 || workers.some((w) => w.threadId !== -1)) {
-    for (const worker of workers) {
-      if (worker.threadId !== -1 && urlsToScrape.length > 0) {
+        activeWorkers--;
+        checkCompletion();
+      });
+
+      worker.on("error", (error) => {
+        logger.error(`Worker ${worker.threadId} error: ${error}`);
+        activeWorkers--;
+        checkCompletion();
+      });
+    }
+
+    function checkCompletion() {
+      if (urlsToScrape.length === 0 && activeWorkers === 0) {
+        clearTimeout(timeout);
+        for (const worker of workers) {
+          worker.terminate();
+        }
+        logger.info("Parallel scraping completed");
+        resolve();
+      } else if (!isTimedOut) {
+        processNextUrl();
+      }
+    }
+
+    function processNextUrl() {
+      while (urlsToScrape.length > 0 && activeWorkers < workerCount) {
         const url = urlsToScrape.dequeue()!;
         const normalizedUrl = normalizeUrl(url);
-        if (!discoveredUrls.has(normalizedUrl)) {
+        if (normalizedUrl && !discoveredUrls.has(normalizedUrl)) {
           discoveredUrls.add(normalizedUrl);
-          worker.postMessage({ url, baseUrl });
-          logger.verbose(`Assigned URL to worker ${worker.threadId}: ${url}`);
-          await new Promise(resolve => setTimeout(resolve, 100)); // Rate limiting
+          const worker = workers.find(w => w.threadId !== -1);
+          if (worker) {
+            activeWorkers++;
+            worker.postMessage({ url, baseUrl });
+            logger.verbose(`Assigned URL to worker ${worker.threadId}: ${url}`);
+          }
         }
       }
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  clearTimeout(timeout);
-
-  for (const worker of workers) {
-    worker.terminate();
-    logger.verbose(`Terminated worker ${worker.threadId}`);
-  }
-
-  logger.info("Parallel scraping completed");
+    processNextUrl();
+  });
 }

@@ -9,4 +9,5 @@ test('normalizeUrl function', () => {
   expect(normalizeUrl('https://example.com/path/to/page')).toBe('https://example.com/path/to/page');
   expect(normalizeUrl('https://example.com/?query=param')).toBe('https://example.com');
   expect(normalizeUrl('https://example.com/#fragment')).toBe('https://example.com');
+  expect(normalizeUrl('invalid-url')).toBe('invalid-url');
 });

@@ -16,7 +16,7 @@ function normalizeUrl(url: string): string {
   return `${parsedUrl.protocol}//${parsedUrl.hostname}${parsedUrl.pathname}`.toLowerCase().replace(/\/$/, '');
 }
 
-parentPort?.on('message', async (message: { url: string; baseUrl: string }) => {
+parentPort?.on('message', async (message: { url: string, baseUrl: string }) => {
   try {
     const { url, baseUrl } = message;
     logger.info(`Worker received message to scrape: ${url}`);
@@ -24,8 +24,10 @@ parentPort?.on('message', async (message: { url: string; baseUrl: string }) => {
     logger.info(`Worker finished scraping ${url}, found ${discoveredUrls.length} URLs`);
     parentPort?.postMessage({ type: "result", urls: discoveredUrls });
   } catch (error) {
-    logger.error(`Worker encountered an error: ${(error as Error).message}`);
-    parentPort?.postMessage({ type: "error", error: (error as Error).message });
+    if (error instanceof Error) {
+      logger.error(`Worker encountered an error: ${error.message}`);
+      parentPort?.postMessage({ type: "error", error: error.message });
+    }
   }
 });
 
@@ -53,7 +55,9 @@ async function scrapeUrl(url: string, baseUrl: string): Promise<string[]> {
       }
     }
   } catch (error) {
-    logger.error(`Error scraping ${url}: ${error}`);
+    if (error instanceof Error) {
+      logger.error(`Error scraping ${url}: ${error.message}`);
+    }
   }
 
   return Array.from(discoveredUrls);
@@ -68,3 +72,5 @@ function constructFullUrl(href: string, currentUrl: string, baseUrl: string): st
     return new URL(href, currentUrl).toString();
   }
 }
+
+export { scrapeUrl, constructFullUrl, normalizeUrl };
