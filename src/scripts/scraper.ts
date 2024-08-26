@@ -53,12 +53,10 @@ async function checkSitemap(baseUrl: string, inputUrl: string, addUrlToSet: (url
   const sitemapUrl = `${baseUrl}/sitemap.xml`;
   try {
     const sitemapResponse = await axiosInstance.get(sitemapUrl);
-    if (sitemapResponse.status === 200) {
-      const sitemapXml = sitemapResponse.data;
-      const sitemapUrls = await parseSitemap(sitemapXml, inputUrl);
-      for (const url of sitemapUrls) {
-        await addUrlToSet(url);
-      }
+    const sitemapXml = sitemapResponse.data;
+    const sitemapUrls = await parseSitemap(sitemapXml, inputUrl);
+    for (const url of sitemapUrls) {
+      await addUrlToSet(url);
     }
   } catch (error) {
     console.error(`Error fetching sitemap: ${error}`);
@@ -93,28 +91,25 @@ async function scrapeUrlsRecursively(
 
   try {
     const response = await axiosInstance.get(url);
+    const root = parse(response.data);
+    const links = root.querySelectorAll("a");
 
-    if (response.status >= 200 && response.status < 300) {
-      const root = parse(response.data);
-      const links = root.querySelectorAll("a");
+    for (const link of links) {
+      const href = link.getAttribute("href");
+      if (href && !href.includes("#")) {
+        const fullUrl = constructFullUrl(href, url, baseUrl);
 
-      for (const link of links) {
-        const href = link.getAttribute("href");
-        if (href && !href.includes("#")) {
-          const fullUrl = constructFullUrl(href, url, baseUrl);
-
-          if (
-            fullUrl.startsWith(baseUrl) &&
-            !discoveredUrls.has(fullUrl) &&
-            !fullUrl.includes("#")
-          ) {
-            await scrapeUrlsRecursively(
-              fullUrl,
-              discoveredUrls,
-              baseUrl,
-              addUrlToSet
-            );
-          }
+        if (
+          fullUrl.startsWith(baseUrl) &&
+          !discoveredUrls.has(fullUrl) &&
+          !fullUrl.includes("#")
+        ) {
+          await scrapeUrlsRecursively(
+            fullUrl,
+            discoveredUrls,
+            baseUrl,
+            addUrlToSet
+          );
         }
       }
     }
