@@ -8,5 +8,14 @@ export default defineConfig({
   experimental: {
     actions: true
   },
-  integrations: [svelte()]
+  integrations: [svelte()],
+  vite: {
+    worker: {
+      format: "es"
+    },
+    test: {
+      globals: true,
+      environment: "jsdom"
+    }
+  }
 });

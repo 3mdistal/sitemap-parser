@@ -1,4 +1,10 @@
 {
+  "compilerOptions": {
+    "allowJs": true,
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "jsx": "preserve"
+  },
   "extends": "astro/tsconfigs/strictest",
   "exclude": ["node_modules/**/*"]
 }
