@@ -16,7 +16,7 @@ export async function scrapeWebsite(
     if (url.includes("?")) return; // Ignore URLs with query parameters
 
     try {
-      const response = await axios.head(url, {
+      await axios.head(url, {
         headers: { "User-Agent": "Mozilla/5.0" },
         validateStatus: (status) =>
           status === 200 || status === 301 || status === 302,
