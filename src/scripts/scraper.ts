@@ -13,20 +13,18 @@ export async function scrapeWebsite(
 
   async function addUrlToSet(url: string) {
     if (url.includes("#")) return; // Ignore URLs with fragments
+    if (url.includes("?")) return; // Ignore URLs with query parameters
 
     try {
       const response = await axios.head(url, {
         headers: { "User-Agent": "Mozilla/5.0" },
-        validateStatus: (status) => status >= 200 && status < 500,
+        validateStatus: (status) =>
+          status === 200 || status === 301 || status === 302,
       });
 
-      if (response.status !== 404) {
-        discoveredUrls.add(url);
-        console.log(`Found URL: ${url}`);
-        onUrlFound?.(url);
-      } else {
-        console.log(`Skipping 404 URL: ${url}`);
-      }
+      discoveredUrls.add(url);
+      console.log(`Found URL: ${url}`);
+      onUrlFound?.(url);
     } catch (error) {
       console.error(`Error checking URL ${url}: ${error}`);
     }
