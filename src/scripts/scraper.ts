@@ -32,22 +32,8 @@ export async function scrapeWebsite(
     }
   }
 
-  // Check for sitemap
-  const sitemapUrl = `${baseUrl}/sitemap.xml`;
-  try {
-    const sitemapResponse = await axiosInstance.get(sitemapUrl);
-    if (sitemapResponse.status === 200) {
-      const sitemapXml = sitemapResponse.data;
-      const sitemapUrls = await parseSitemap(sitemapXml, inputUrl);
-      for (const url of sitemapUrls) {
-        await addUrlToSet(url);
-      }
-    }
-  } catch (error) {
-    console.error(`Error fetching sitemap: ${error}`);
-  }
+  await checkSitemap(baseUrl, inputUrl, addUrlToSet);
 
-  // Scrape URLs if sitemapOnly is false
   if (!sitemapOnly) {
     await scrapeUrlsRecursively(inputUrl, discoveredUrls, baseUrl, addUrlToSet);
   }
@@ -61,6 +47,22 @@ export async function scrapeWebsite(
   await generateSitemapJson(sortedUrls);
 
   return sortedUrls;
+}
+
+async function checkSitemap(baseUrl: string, inputUrl: string, addUrlToSet: (url: string) => Promise<void>) {
+  const sitemapUrl = `${baseUrl}/sitemap.xml`;
+  try {
+    const sitemapResponse = await axiosInstance.get(sitemapUrl);
+    if (sitemapResponse.status === 200) {
+      const sitemapXml = sitemapResponse.data;
+      const sitemapUrls = await parseSitemap(sitemapXml, inputUrl);
+      for (const url of sitemapUrls) {
+        await addUrlToSet(url);
+      }
+    }
+  } catch (error) {
+    console.error(`Error fetching sitemap: ${error}`);
+  }
 }
 
 async function parseSitemap(xml: string, baseUrl: string): Promise<string[]> {
