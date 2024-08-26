@@ -2,12 +2,18 @@ import axios, { type AxiosInstance } from "axios";
 import { parseString } from "xml2js";
 import fs from "fs/promises";
 import { Worker } from "worker_threads";
+import { Queue } from 'queue-typescript';
 
 const axiosInstance: AxiosInstance = axios.create({
   headers: { "User-Agent": "Mozilla/5.0" },
   maxRedirects: 5,
   validateStatus: (status) => [200, 301, 302, 304, 307, 308].includes(status),
 });
+
+function normalizeUrl(url: string): string {
+  const parsedUrl = new URL(url);
+  return `${parsedUrl.protocol}//${parsedUrl.hostname}${parsedUrl.pathname}`.toLowerCase().replace(/\/$/, '');
+}
 
 export async function scrapeWebsite(
   inputUrl: string,
@@ -21,10 +27,13 @@ export async function scrapeWebsite(
     if (url.includes("#")) return; // Ignore URLs with fragments
     if (url.includes("?")) return; // Ignore URLs with query parameters
 
+    const normalizedUrl = normalizeUrl(url);
+    if (discoveredUrls.has(normalizedUrl)) return;
+
     try {
       await axiosInstance.head(url);
 
-      discoveredUrls.add(url);
+      discoveredUrls.add(normalizedUrl);
       console.log(`Found URL: ${url}`);
       onUrlFound?.(url);
     } catch (error) {
@@ -86,10 +95,18 @@ async function scrapeUrlsParallel(
   baseUrl: string,
   addUrlToSet: (url: string) => Promise<void>
 ) {
-  const workerCount = 4; // Adjust this number based on your needs
+  const workerCount = 4;
   const workers: Worker[] = [];
-  const urlsToScrape: string[] = [startUrl];
+  const urlsToScrape = new Queue<string>();
+  urlsToScrape.enqueue(startUrl);
   const scrapedUrls: Set<string> = new Set();
+
+  const timeout = setTimeout(() => {
+    console.log("Scraping timed out");
+    for (const worker of workers) {
+      worker.terminate();
+    }
+  }, 5 * 60 * 1000);
 
   for (let i = 0; i < workerCount; i++) {
     const worker = new Worker(new URL("./scraper.worker.js", import.meta.url));
@@ -98,11 +115,14 @@ async function scrapeUrlsParallel(
     worker.on("message", async (message) => {
       if (message.type === "result") {
         for (const url of message.urls) {
-          if (!scrapedUrls.has(url) && !discoveredUrls.has(url)) {
+          const normalizedUrl = normalizeUrl(url);
+          if (!scrapedUrls.has(normalizedUrl) && !discoveredUrls.has(normalizedUrl)) {
             await addUrlToSet(url);
-            urlsToScrape.push(url);
+            urlsToScrape.enqueue(url);
           }
         }
+      } else if (message.type === "error") {
+        console.error(`Worker error: ${message.error}`);
       }
     });
   }
@@ -110,14 +130,20 @@ async function scrapeUrlsParallel(
   while (urlsToScrape.length > 0 || workers.some((w) => w.threadId !== -1)) {
     for (const worker of workers) {
       if (worker.threadId !== -1 && urlsToScrape.length > 0) {
-        const url = urlsToScrape.pop()!;
-        scrapedUrls.add(url);
-        worker.postMessage({ url, baseUrl });
+        const url = urlsToScrape.dequeue()!;
+        const normalizedUrl = normalizeUrl(url);
+        if (!scrapedUrls.has(normalizedUrl)) {
+          scrapedUrls.add(normalizedUrl);
+          worker.postMessage({ url, baseUrl });
+          await new Promise(resolve => setTimeout(resolve, 100)); // Rate limiting
+        }
       }
     }
 
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+
+  clearTimeout(timeout);
 
   for (const worker of workers) {
     worker.terminate();
